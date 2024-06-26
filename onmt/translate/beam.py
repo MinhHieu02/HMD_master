@@ -1,3 +1,4 @@
+# %load /kaggle/working/HMD_master/onmt/translate/beam.py
 from __future__ import division
 import torch
 from onmt.translate import penalties
@@ -26,18 +27,18 @@ class Beam(object):
                  exclusion_tokens=set()):
 
         self.size = size
-        self.tt = torch.cuda if cuda else torch
-
+        #         self.tt = torch.cuda if cuda else torch
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         # The score for each translation on the beam.
-        self.scores = self.tt.FloatTensor(size).zero_()
+        self.scores = torch.zeros(size, dtype=torch.float64, device=self.device)
         self.all_scores = []
 
         # The backpointers at each time-step.
         self.prev_ks = []
 
         # The outputs at each time-step.
-        self.next_ys = [self.tt.LongTensor(size)
-                        .fill_(pad)]
+        self.next_ys = [torch.zeros(size, dtype=torch.int64, device=self.device).fill_(pad)]
+
         self.next_ys[0][0] = bos
 
         # Has EOS topped the beam yet.
@@ -94,7 +95,7 @@ class Beam(object):
         # Sum the previous scores.
         if len(self.prev_ks) > 0:
             beam_scores = word_probs + \
-                self.scores.unsqueeze(1).expand_as(word_probs)
+                          self.scores.unsqueeze(1).expand_as(word_probs)
             # Don't let EOS have children.
             for i in range(self.next_ys[-1].size(0)):
                 if self.next_ys[-1][i] == self._eos:
@@ -132,7 +133,7 @@ class Beam(object):
 
         # best_scores_id is flattened beam x word array, so calculate which
         # word and beam each score came from
-        prev_k = best_scores_id / num_words
+        prev_k = torch.div(best_scores_id,num_words,rounding_mode='trunc')
         self.prev_ks.append(prev_k)
         self.next_ys.append((best_scores_id - prev_k * num_words))
         self.attn.append(attn_out.index_select(0, prev_k))
@@ -241,3 +242,4 @@ class GNMTGlobalScorer(object):
                                             beam.global_state["coverage"],
                                             self.beta)
             beam.global_state["prev_penalty"] = prev_penalty
+

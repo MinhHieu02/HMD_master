@@ -26,8 +26,9 @@ from eval.eval import eval
 
 
 def build_translator(opt, report_score=True, logger=None, out_file=None):
-    if out_file is None:
-        out_file = codecs.open(opt.output, 'w+', 'utf-8')
+    # if out_file is None:
+    #     out_file = codecs.open(opt.output, 'w+', 'utf-8')
+    out_file = codecs.open(opt.output, 'w+', 'utf-8')
 
     dummy_parser = argparse.ArgumentParser(description='train.py')
     opts.model_opts(dummy_parser)
@@ -341,6 +342,7 @@ class Translator(object):
             self.n_best, self.replace_unk, has_tgt=False)
         
         translated = []
+        num_processed= 0
         for i, batch in enumerate(tqdm(data_iter)):
             with torch.no_grad():
                 batch_data1= self.translate_batch(batch, data, 'first') 
@@ -351,11 +353,18 @@ class Translator(object):
             translations2 = builder.from_batch(batch_data2)
             translations3 = builder.from_batch(batch_data3)
             translated.extend([(translations1[0], translations2[0], translations3[0])])
+            for t1, t2, t3 in zip(translations1, translations2, translations3):
+                self.out_file.write(f"{t1.pred_sents[0]}\n{t2.pred_sents[0]}\n{t3.pred_sents[0]}\n")
+                num_processed += 1
+                if max_test_sentences and num_processed >= max_test_sentences:
+                    break
+
             if i % report_eval_every == 0 and i!=0:
                 print("Number of records Processed :", i)
                 eval_save(translated)
         print("++++++++++++++ Final Evaluation Scores +++++++++++")
-        eval_save(translated) 
+        eval_save(translated)
+        self.out_file.close()
         return translated
 
     def translate_batch(self, batch, data, dis_num):

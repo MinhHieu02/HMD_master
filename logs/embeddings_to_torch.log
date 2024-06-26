@@ -3063,3 +3063,38 @@ Saving embedding as:
 	* dec: ../data/processed.glove.dec.pt
 [2020-04-29 21:50:50,893 INFO] 
 Done.
+[2024-05-09 16:38:10,880 INFO] From: ../data/processed.vocab.pt
+[2024-05-09 16:38:10,880 INFO] 	* source vocab: 50004 words
+[2024-05-09 16:38:10,881 INFO] 	* target vocab: 50004 words
+[2024-05-09 16:49:09,620 INFO] From: ../data/processed.vocab.pt
+[2024-05-09 16:49:09,620 INFO] 	* source vocab: 50004 words
+[2024-05-09 16:49:09,620 INFO] 	* target vocab: 50004 words
+[2024-05-09 16:57:00,186 INFO] From: ../data/processed.vocab.pt
+[2024-05-09 16:57:00,186 INFO] 	* source vocab: 50004 words
+[2024-05-09 16:57:00,186 INFO] 	* target vocab: 50004 words
+[2024-05-10 12:27:01,796 INFO] From: ../data/processed.vocab.pt
+[2024-05-10 12:27:01,796 INFO] 	* source vocab: 50004 words
+[2024-05-10 12:27:01,796 INFO] 	* target vocab: 50004 words
+[2024-06-14 16:04:20,269 INFO] From: ../data/processed.vocab.pt
+[2024-06-14 16:04:20,269 INFO] 	* source vocab: 12301 words
+[2024-06-14 16:04:20,269 INFO] 	* target vocab: 12301 words
+[2024-06-14 16:04:20,269 INFO] Loading BERT tokenizer and model...
+[2024-06-14 16:04:53,160 INFO] Generating embeddings for each word in the vocabulary...
+[2024-06-14 16:05:36,491 INFO] Completed generating embeddings.
+[2024-06-14 16:05:36,511 INFO] Loading BERT tokenizer and model...
+[2024-06-14 16:05:39,399 INFO] Generating embeddings for each word in the vocabulary...
+[2024-06-14 16:06:21,376 INFO] Completed generating embeddings.
+[2024-06-14 16:06:21,420 INFO] 
+Matching: 
+[2024-06-14 16:06:21,420 INFO] 	* enc: 12301 match, 0 missing, (100.00%)
+[2024-06-14 16:06:21,420 INFO] 	* dec: 12301 match, 0 missing, (100.00%)
+[2024-06-14 16:06:21,420 INFO] 
+Filtered embeddings:
+[2024-06-14 16:06:21,420 INFO] 	* enc: torch.Size([12301, 768])
+[2024-06-14 16:06:21,420 INFO] 	* dec: torch.Size([12301, 768])
+[2024-06-14 16:06:21,420 INFO] 
+Saving embedding as:
+	* enc: ../data/processed.bert.enc.pt
+	* dec: ../data/processed.bert.dec.pt
+[2024-06-14 16:06:21,478 INFO] 
+Done.

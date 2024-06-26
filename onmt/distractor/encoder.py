@@ -9,6 +9,7 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 from onmt.utils.rnn_factory import rnn_factory
 from onmt.utils.misc import sequence_mask
+from onmt.distractor.attention import MultiHeadAttention
 
 
 class PermutationWrapper:
@@ -309,6 +310,7 @@ class DistractorEncoder(nn.Module):
         self.hidden_linear = nn.Linear(hidden_size, hidden_size)
         self.ss_ap_liner = nn.Linear(hidden_size, hidden_size)
         self.relu = nn.ReLU()
+        self.multi_head_attention = MultiHeadAttention(embed_dim=768, n_heads=12)
         
     def gated_mechanism_of_averagepool(self, bank_sent, softsel_sent):
         ss_ap_z = self.sigmoid(self.ss_ap_liner(bank_sent) + self.ss_ap_liner(softsel_sent))
@@ -428,15 +430,29 @@ class DistractorEncoder(nn.Module):
         #tgt
         tgt_word_emb = self.tgt_embeddings(tgt.unsqueeze(-1))
         tgt_word_bank, tgt_state, _ = self.tgt_encoder(tgt_word_emb, tgt_length, "tgt")
-        
-        #softsel
-        H_ques = self.soft_sel2D_score(ques_bank, word_bank)
-        H_ans = self.soft_sel2D_score(ans_bank, word_bank)
 
-        H_ques_ans = self.soft_sel1D_score(ques_bank, ans_bank)   #add
-        H_ans_ques = self.soft_sel1D_score(ans_bank, ques_bank)   #add
-        H_ques_bar = self.soft_sel2D_score(H_ques_ans, word_bank) #add
-        H_ans_bar = self.soft_sel2D_score(H_ans_ques, word_bank)  #add
+        word_bank_flat = word_bank.view(-1, bs, 768)
+        ques_bank_flat = ques_bank.view(-1,bs,768)
+        ans_bank_flat = ans_bank.view(-1, bs, 768)
+
+        print(f"word_bank.shape {word_bank.shape}")
+        H_ques = self.multi_head_attention(ques_bank_flat, word_bank_flat, word_bank_flat)
+        H_ans = self.multi_head_attention(ans_bank_flat,word_bank_flat,word_bank_flat)
+        H_ques_ans = self.multi_head_attention(ques_bank_flat,ans_bank_flat, ans_bank_flat)
+        H_ans_ques = self.multi_head_attention(ans_bank_flat,ques_bank_flat, ques_bank_flat)
+        H_ques_bar = self.multi_head_attention(H_ques_ans, word_bank_flat, word_bank_flat)
+        H_ans_bar = self.multi_head_attention(H_ans_ques, word_bank_flat, word_bank_flat)
+
+
+
+        #softsel
+        # H_ques = self.soft_sel2D_score(ques_bank, word_bank)
+        # H_ans = self.soft_sel2D_score(ans_bank, word_bank)
+
+        # H_ques_ans = self.soft_sel1D_score(ques_bank, ans_bank)   #add
+        # H_ans_ques = self.soft_sel1D_score(ans_bank, ques_bank)   #add
+        # H_ques_bar = self.soft_sel2D_score(H_ques_ans, word_bank) #add
+        # H_ans_bar = self.soft_sel2D_score(H_ans_ques, word_bank)  #add
      
         #Average pooling of word_bank, question_bank and ans_bank 
         match_word = torch.div(word_bank.sum(0), (word_length.unsqueeze(-1).float() + 1e-20))   #passage Sentence
@@ -444,7 +460,7 @@ class DistractorEncoder(nn.Module):
         match_ans = torch.div(ans_bank.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)        #ans
         
         #Average pooling of softsel question and softsel answer 
-        H_match_ques = torch.div(ques_bank.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))   #H_ques
+        H_match_ques = torch.div(H_ques.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))   #H_ques
         H_match_ans = torch.div(H_ans.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)           #H_ans
 
         H_match_ques_bar = torch.div(H_ques_bar.sum(0), ques_length.unsqueeze(-1).float() + 1e-20)           #H_ques_bar #add

@@ -17,7 +17,8 @@ def main(opt):
     translator = build_translator(opt, report_score=False)
     translated = translator.translate(data_path=opt.data,
                                       batch_size=opt.batch_size, 
-                                      report_eval_every=opt.report_eval_every)
+                                      report_eval_every=opt.report_eval_every,
+                                      max_test_sentences=opt.max_test_sentences)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

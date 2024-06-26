@@ -1,4 +1,3 @@
-# coding: utf-8
 """
     Base dataset class and constants
 """
@@ -36,7 +35,7 @@ class DatasetBase(torchtext.data.Dataset):
 
     def __reduce_ex__(self, proto):
         "This is a hack. Something is broken with torch pickle."
-        return super(DatasetBase, self).__reduce_ex__()
+        return super(DatasetBase, self).__reduce_ex__(proto)
 
     def load_fields(self, vocab_dict):
         """ Load fields from vocab.pt, and set the `fields` attribute.
@@ -44,7 +43,7 @@ class DatasetBase(torchtext.data.Dataset):
         Args:
             vocab_dict (dict): a dict of loaded vocab from vocab.pt file.
         """
-        
+
         fields = onmt.inputters.inputter.load_fields_from_vocab(
             vocab_dict.items(), self.data_type)
         self.fields = dict([(k, f) for (k, f) in fields.items()
@@ -59,7 +58,7 @@ class DatasetBase(torchtext.data.Dataset):
             n_feats: num of features
         Returns:
             A sequence of words, a sequence of features, and num of features.
-        """        
+        """
         if not tokens:
             return [], [], -1
 
@@ -69,28 +68,28 @@ class DatasetBase(torchtext.data.Dataset):
             wordss = []
             featuress = []
             for split_tokens in tokens:
-                if len(split_tokens) != 0 and split_tokens[0] != '|||': 
+                if len(split_tokens) != 0 and split_tokens[0] != '|||':
                     words = []
                     features = []
                     for split_token in split_tokens:
                         split_token = split_token.split("|")
                         if split_token[0]:
                             words += [split_token[0]]
-                            feat_list = [split_token[1:][feat]  for feat in feat_name_index]
-                            features += [feat_list]      
+                            feat_list = [split_token[1:][feat] for feat in feat_name_index]
+                            features += [feat_list]
                     features = list(zip(*features))
                     wordss.append(words)
                     featuress.append(features)
-            
+
             n_feats_list = list(range(len(feat_name_index)))
             featuress_same = []
-            temp_dict = {i:[] for i in range(len(feat_name_index))}
+            temp_dict = {i: [] for i in range(len(feat_name_index))}
             for sent in featuress:
                 for j, fea in enumerate(sent):
                     if j == n_feats_list[j]:
-                        temp_dict[j].append(fea)                
+                        temp_dict[j].append(fea)
             for key in temp_dict:
-                featuress_same.append(tuple(temp_dict[key]))   
+                featuress_same.append(tuple(temp_dict[key]))
             return wordss, featuress_same
         else:
             words = []
@@ -99,9 +98,9 @@ class DatasetBase(torchtext.data.Dataset):
                 split_token = split_token.split("|")
                 if split_token[0]:
                     words += [split_token[0]]
-                    feat_list = [split_token[1:][feat]  for feat in feat_name_index]
-                    features += [feat_list]  
-        
+                    feat_list = [split_token[1:][feat] for feat in feat_name_index]
+                    features += [feat_list]
+
             features = list(zip(*features))
             return tuple(words), features
 

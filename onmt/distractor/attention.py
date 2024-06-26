@@ -3,7 +3,8 @@ import torch
 import torch.nn as nn
 
 from onmt.utils.misc import aeq, sequence_mask, sequence_mask_herd
-
+import math
+import torch.nn.functional as F
 
 class HierarchicalAttention(nn.Module):
     """Dynamic attention"""
@@ -128,3 +129,88 @@ class HierarchicalAttention(nn.Module):
         attn_h = self.tanh(attn_h)
 
         return attn_h, align_vectors.squeeze(1)
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, embed_dim=768, n_heads=12):
+        """
+        Args:
+            embed_dim: dimension of embeding vector output
+            n_heads: number of self attention heads
+        """
+        super(MultiHeadAttention, self).__init__()
+
+        self.embed_dim = embed_dim  # 512 dim
+        self.n_heads = n_heads  # 8
+        self.single_head_dim = int(self.embed_dim / self.n_heads)  # 512/8 = 64  . each key,query, value will be of 64d
+
+        # key,query and value matrixes    #64 x 64
+        self.query_matrix = nn.Linear(self.single_head_dim, self.single_head_dim,
+                                      bias=False)  # single key matrix for all 8 keys #512x512
+        self.key_matrix = nn.Linear(self.single_head_dim, self.single_head_dim, bias=False)
+        self.value_matrix = nn.Linear(self.single_head_dim, self.single_head_dim, bias=False)
+        self.out = nn.Linear(self.n_heads * self.single_head_dim, self.embed_dim)
+
+    def forward(self, query, key, value, mask=None):  # batch_size x seqence_length x embedding_dim
+        """
+            Args:
+                key : key vector
+                query : query vector
+                value : value vector
+                mask: mask for decoder
+
+            Returns:
+                output vector from multihead attention
+        """
+
+        batch_size = key.size(0)
+        seq_length = key.size(1)
+        # query dimension can change in decoder during inference.  so we can't take general seq_length
+        seq_length_query = query.size(1)
+
+        # batch_size x seq_length x embed_dim
+
+        key = key.view(key.size(1), key.size(0), self.n_heads,self.single_head_dim)  # batch_size x seq_len x n_heads x single_head_dim
+        query = query.view(query.size(1), query.size(0), self.n_heads, self.single_head_dim)
+        value = value.view(value.size(1), value.size(0), self.n_heads, self.single_head_dim)
+        print(f"key shape: {key.shape}")
+        print(f"query shape: {query.shape}")
+        k = self.key_matrix(key)
+        q = self.query_matrix(query)
+        v = self.value_matrix(value)
+        print(f"v shape: {v.shape}")
+        q = q.transpose(1, 2)  # batch_size x n_heads x seq_len x single_head_dim
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        print(f"v shape: {v.shape}")
+        print(f"q shape: {q.shape}")
+
+        # compute attentions , # adjusted key for matrix multiplication
+
+        k_adjust = k.transpose(-1, -2)  # batch_size x n_heads x single_head_dim x seqence_length
+        print(f"k_adjust shape: {k_adjust.shape}")
+        product = torch.matmul(q,k_adjust)  # batch_size x n_heads x seq_len x single_head_dim * #batch_size x n_heads x single_head_dim x seqence_length
+        # batch_size x n_heads x seqence_length x seqence_length
+
+        # fill those positions of product matrix as (-1e20) where mask positions are 0
+
+        if mask is not None:
+            product = product.masked_fill(mask == 0, -float("inf"))
+        # divising by square root of key dimension
+
+        product = product / math.sqrt(self.single_head_dim)  # sqrt(64)
+
+        # applying softmax
+
+        scores = F.softmax(product, dim=-1)
+        print(f"score shape: {scores.shape}")
+        print(f"v shape: {v.shape}")
+        scores = torch.matmul(scores, v)  # batch x n_head x seq_leg x sing_head_dim
+        print(f"scores shape: {scores.shape}")
+        # concatenated output
+        concat = scores.transpose(1, 2).contiguous().view(query.size(1), query.size(0),
+                                                          self.single_head_dim * self.n_heads)  # batch x seq_leng x embed_dims
+
+        output = self.out(concat)  # batch x seq_length x embed_dim
+
+        return output

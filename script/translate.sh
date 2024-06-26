@@ -2,7 +2,7 @@
 
 #PROJ=/home/evanyfgao/Distractor-Generation-RACE
 
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=0
 FULL_MODEL_NAME=$1
 
 python3 -u ../translate.py \
@@ -15,8 +15,8 @@ python3 -u ../translate.py \
     -batch_size=1 \
     -beam_size=10\
     -n_best=10 \
-    -gpuid=0 \
-    -report_eval_every=500 \
+    -gpuid=-1 \
+    -report_eval_every=10 \
     #-feat_name=pos_ner_dep_lemma \
     #-n_feats=4 \
     #-max_test_sentences=5
