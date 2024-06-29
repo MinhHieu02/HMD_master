@@ -434,7 +434,15 @@ class DistractorEncoder(nn.Module):
         ques_bank_flat = ques_bank.view(-1, bs, 768)
         ans_bank_flat = ans_bank.view(-1, bs, 768)
 
-        # print(f"word_bank.shape {word_bank.shape}")
+        ques_bank_reform = self.reform_question(ques_bank_flat.transpose(0, 1), ans_bank_flat.transpose(0, 1)).transpose(0, 1)
+        word_bank_reform = self.reform_passage(word_bank_flat.transpose(0, 1), ques_bank_flat.transpose(0, 1),ans_bank_flat.transpose(0, 1), ques_bank_reform.transpose(0, 1)).view(
+            word_bank.shape)
+        sent_bank_reform = self.reform_passage(sent_bank.transpose(0, 1), ques_bank_flat.transpose(0, 1), ans_bank_flat.transpose(0, 1), ques_bank_reform.transpose(0, 1)).view(
+            sent_bank.shape)
+
+        word_bank_flat = word_bank_reform.view(-1, bs, 768).contiguous()
+        ques_bank_flat = ques_bank_reform.view(-1, bs, 768).contiguous()
+
         H_ques = self.multi_head_attention(ques_bank_flat, word_bank_flat, word_bank_flat)
         H_ans = self.multi_head_attention(ans_bank_flat, word_bank_flat, word_bank_flat)
         H_ques_ans = self.multi_head_attention(ques_bank_flat, ans_bank_flat, ans_bank_flat)
@@ -442,9 +450,7 @@ class DistractorEncoder(nn.Module):
         H_ques_bar = self.multi_head_attention(H_ques_ans, word_bank_flat, word_bank_flat)
         H_ans_bar = self.multi_head_attention(H_ans_ques, word_bank_flat, word_bank_flat)
 
-        ques_bank_reform = self.reform_question(ques_bank_flat.transpose(0,1), ans_bank_flat.transpose(0,1)).transpose(0,1)
-        word_bank_reform = self.reform_passage(word_bank_flat.transpose(0,1),ques_bank_flat.transpose(0,1),ans_bank_flat.transpose(0,1), ques_bank_reform.transpose(0,1)).view(word_bank.shape)
-        sent_bank_reform = self. reform_passage(sent_bank.transpose(0,1),ques_bank_flat.transpose(0,1),ans_bank_flat.transpose(0,1), ques_bank_reform.transpose(0,1)).view(sent_bank.shape)
+
         # softsel
         # H_ques = self.soft_sel2D_score(ques_bank, word_bank)
         # H_ans = self.soft_sel2D_score(ans_bank, word_bank)
@@ -458,8 +464,8 @@ class DistractorEncoder(nn.Module):
 
 
 
-        match_word = torch.div(word_bank.sum(0), (word_length.unsqueeze(-1).float() + 1e-20))  # passage Sentence
-        match_ques = torch.div(ques_bank.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))  # ques
+        match_word = torch.div(word_bank_reform.sum(0), (word_length.unsqueeze(-1).float() + 1e-20))  # passage Sentence
+        match_ques = torch.div(ques_bank_reform.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))  # ques
         match_ans = torch.div(ans_bank.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)  # ans
 
         # Average pooling of softsel question and softsel answer
@@ -520,7 +526,6 @@ class ReformingPassageModule(nn.Module):
         self.reform = ReformingQuestionModule(dim)
         self.p_q_attention = nn.Linear(dim, dim)
         self.re_encoding = nn.LSTM(dim, dim // 2, bidirectional=True)
-        # self.re_encoding = RNNEncoder()
 
     def scale_dot_attention(self, query, key, value, mask=None, dropout=None):
         dims = query.size(-1)
@@ -540,23 +545,6 @@ class ReformingPassageModule(nn.Module):
         fused_p = self.fusion(P_dot, P_bar)
 
 
-        # fused_a = self.fusion(torch.cat([answer, attended_q, answer - attended_q, answer * attended_q], dim=-1))
-        #
-        # # Self-Attend & Gate Layer
-        # a_weights = F.softmax(self.self_attend(fused_a), dim=0)
-        # a_vec = torch.sum(a_weights * fused_a, dim=0)
-        # gate_values = torch.sigmoid(self.gate(passage.view(-1, passage.size(-1)), a_vec.unsqueeze(0).expand(
-        #     passage.size(0) * passage.size(1) * passage.size(2), -1)))
-        # reformed_passage = gate_values.view(passage.size()) * passage
-        #
-        # # P-Q Attention Layer
-        # p_q_attention = F.softmax(
-        #     torch.bmm(self.p_q_attention(reformed_passage.view(-1, reformed_passage.size(-1))),
-        #               question.transpose(1, 2)), dim=2)
-        # attended_p = torch.bmm(p_q_attention, question).view(reformed_passage.size())
-        # fused_p = self.fusion(torch.cat(
-        #     [reformed_passage, attended_p, reformed_passage - attended_p, reformed_passage * attended_p],
-        #     dim=-1))
 
         # Re-encoding Layer
         re_encoded_passage, _ = self.re_encoding(fused_p)
