@@ -1,6 +1,6 @@
 """Define encoder for distractor generation."""
 from __future__ import division
-
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,6 +14,7 @@ from onmt.distractor.attention import MultiHeadAttention
 
 class PermutationWrapper:
     """Sort the batch according to length, for using RNN pack/unpack"""
+
     def __init__(self, gpu, length, rnn_type='LSTM'):
         """
         :param inputs: [seq_length * batch_size]
@@ -21,7 +22,6 @@ class PermutationWrapper:
         :param batch_first: the first dimension of inputs denotes batch_size or not
         """
 
-            
         device = torch.device("cuda" if gpu == True else "cpu")
         self.device = device
         self.original_length = length
@@ -30,24 +30,23 @@ class PermutationWrapper:
         # e.g. mapping[1] = 5 denotes the tensor which currently in self.sorted_inputs position 5
         # originally locates in position 1 of self.original_inputs
         self.mapping = torch.zeros(self.original_length.size(0)).long().fill_(0)
- 
 
-    def sort(self, inputs, batch_first=False): 
-       
+    def sort(self, inputs, batch_first=False):
+
         """
         sort the inputs according to length
         :return: sorted tensor and sorted length
         """
         if batch_first:
-            inputs = torch.transpose(inputs, 0, 1)  
+            inputs = torch.transpose(inputs, 0, 1)
 
         inputs_list = list(inputs_i.squeeze(1) for inputs_i in torch.split(inputs, 1, dim=1))
-        
+
         sorted_inputs = sorted([(length_i.item(), i, inputs_i) for i, (length_i, inputs_i) in
                                 enumerate(zip(self.original_length, inputs_list))], reverse=True)
 
         rnn_inputs = []
-        rnn_length = []  
+        rnn_length = []
         for i, (length_i, original_idx, inputs_i) in enumerate(sorted_inputs):
             # original_idx: original position in the inputs
             self.mapping[original_idx] = i
@@ -57,7 +56,6 @@ class PermutationWrapper:
         rnn_length = torch.Tensor(rnn_length).type_as(self.original_length)
         return rnn_inputs, rnn_length
 
-
     def remap(self, output, state):
         """
         remap the output from RNN to the original input order
@@ -65,7 +63,7 @@ class PermutationWrapper:
         :param state: final state
         :return: the output and states in original input order
         """
-        if self.rnn_type=='LSTM':
+        if self.rnn_type == 'LSTM':
             remap_state = tuple(torch.index_select(state_i, 1, self.mapping.to(self.device))
                                 for state_i in state)
         else:
@@ -77,6 +75,7 @@ class PermutationWrapper:
 
 class PermutationWrapper2D:
     """Permutation Wrapper for 2 levels input like sentence level/word level"""
+
     def __init__(self, gpu, word_length, sentence_length,
                  batch_first=False, rnn_type='LSTM'):
         """
@@ -114,12 +113,12 @@ class PermutationWrapper2D:
         """
         # first reshape the src into a nested list, remove padded sentences
         inputs_list = list(inputs_i.squeeze(0) for inputs_i in torch.split(inputs, 1, 0))
-        
+
         inputs_nested_list = []
         for sent_len_i, sent_i in zip(self.original_sentence_length, inputs_list):
-            sent_tmp = list(words_i.squeeze(0) for words_i in torch.split(sent_i, 1, 0))     
+            sent_tmp = list(words_i.squeeze(0) for words_i in torch.split(sent_i, 1, 0))
             inputs_nested_list.append(sent_tmp[:sent_len_i])
-        
+
         # remove 0 in word_length
         inputs_length_nested_list = []
         for sent_len_i, word_len_i in zip(self.original_sentence_length,
@@ -143,7 +142,7 @@ class PermutationWrapper2D:
         effective_batch_size = len(rnn_inputs)
         rnn_inputs = torch.stack(rnn_inputs, dim=1)
         rnn_length = torch.Tensor(rnn_length).type_as(self.original_word_length)
-        
+
         return rnn_inputs, rnn_length, effective_batch_size
 
     def remap(self, output, state):
@@ -159,7 +158,7 @@ class PermutationWrapper2D:
         remap_output = torch.index_select(output_padded, 1, self.mapping.view(-1).to(self.device))
         remap_output = remap_output.view(remap_output.size(0),
                                          self.mapping.size(0), self.mapping.size(1), -1)
-        
+
         if self.rnn_type == "LSTM":
             h, c = state[0], state[1]
             h_padded = F.pad(h, (0, 0, 1, 0))
@@ -171,7 +170,7 @@ class PermutationWrapper2D:
         else:
             state_padded = F.pad(state, (0, 0, 1, 0))
             remap_state = torch.index_select(state_padded, 1, self.mapping.view(-1).to(self.device))
-            remap_state = remap_state.view(remap_state.size(0), self.mapping.size(0), self.mapping.size(1), -1)    
+            remap_state = remap_state.view(remap_state.size(0), self.mapping.size(0), self.mapping.size(1), -1)
         return remap_output, remap_state
 
 
@@ -195,7 +194,7 @@ class RNNEncoder(nn.Module):
         num_directions = 2 if bidirectional else 1
         assert hidden_size % num_directions == 0
         hidden_size = hidden_size // num_directions
-        
+
         self.rnn, self.no_pack_padded_seq = \
             rnn_factory(rnn_type,
                         input_size=emb_size,
@@ -212,9 +211,9 @@ class RNNEncoder(nn.Module):
             lengths_list = lengths.view(-1).tolist()
             if side == 'tgt':
                 packed_emb = pack(src_emb, lengths_list, enforce_sorted=False)
-            else:  
+            else:
                 packed_emb = pack(src_emb, lengths_list)
-                
+
         memory_bank, encoder_final = self.rnn(packed_emb)
 
         if lengths is not None and not self.no_pack_padded_seq:
@@ -238,11 +237,11 @@ class DistractorEncoder(nn.Module):
     """
 
     def __init__(self, gpu, rnn_type,
-                 word_encoder_type,  sent_encoder_type, question_init_type,
+                 word_encoder_type, sent_encoder_type, question_init_type,
                  word_encoder_layers, sent_encoder_layers, question_init_layers,
                  hidden_size, dropout=0.0, embeddings=None,
                  l_ques=0.0, l_ans=0.0, tgt_embeddings=None):
-        
+
         super(DistractorEncoder, self).__init__()
         assert embeddings is not None
         self.gpu = gpu
@@ -255,8 +254,8 @@ class DistractorEncoder(nn.Module):
 
         # word encoder
         if word_encoder_type in ['brnn', 'rnn']:
-            word_bidirectional = True if word_encoder_type=='brnn' else False
-            word_dropout =  0.0 if word_encoder_layers == 1 else dropout
+            word_bidirectional = True if word_encoder_type == 'brnn' else False
+            word_dropout = 0.0 if word_encoder_layers == 1 else dropout
             self.word_encoder = RNNEncoder(rnn_type, word_bidirectional,
                                            word_encoder_layers, hidden_size,
                                            word_dropout, self.embeddings.embedding_size)
@@ -283,27 +282,26 @@ class DistractorEncoder(nn.Module):
                                            ques_dropout, self.embeddings.embedding_size)
         else:
             raise NotImplementedError
-            
-            
+
         # decoder hidden state initialization
         # here only use a unidirectional rnn to encode gold distractor
         if question_init_type in ['brnn', 'rnn']:
             init_bidirectional = True if question_init_type == 'brnn' else False
             ques_dropout = 0.0 if question_init_layers == 1 else dropout
             self.tgt_encoder = RNNEncoder(rnn_type, init_bidirectional,
-                                           question_init_layers, hidden_size,
-                                           ques_dropout, self.tgt_embeddings.embedding_size)
+                                          question_init_layers, hidden_size,
+                                          ques_dropout, self.tgt_embeddings.embedding_size)
         else:
-            raise NotImplementedError    
+            raise NotImplementedError
 
-        # static attention
+            # static attention
         self.match_linear = nn.Linear(hidden_size, hidden_size)
         self.norm_linear = nn.Linear(hidden_size, 1)
         self.softmax = nn.Softmax(dim=-1)
         self.softmax_row = nn.Softmax(dim=1)
         self.sigmoid = nn.Sigmoid()
-        
-        #projection Layer
+
+        # projection Layer
         self.proj_linear = nn.Linear(self.embeddings.embedding_size, hidden_size)
         self.score_mult = nn.Linear(hidden_size, hidden_size)
         self.embd_proj_linear = nn.Linear(hidden_size, hidden_size)
@@ -311,60 +309,64 @@ class DistractorEncoder(nn.Module):
         self.ss_ap_liner = nn.Linear(hidden_size, hidden_size)
         self.relu = nn.ReLU()
         self.multi_head_attention = MultiHeadAttention(embed_dim=768, n_heads=12)
-        
+
+        self.reform_question = ReformingQuestionModule(768)
+        self.reform_passage = ReformingPassageModule(768)
+
     def gated_mechanism_of_averagepool(self, bank_sent, softsel_sent):
         ss_ap_z = self.sigmoid(self.ss_ap_liner(bank_sent) + self.ss_ap_liner(softsel_sent))
-        return bank_sent * ss_ap_z +  softsel_sent * (1-ss_ap_z)
-         
+        return bank_sent * ss_ap_z + softsel_sent * (1 - ss_ap_z)
+
     def gated_mechanism(self, embd, hidden):
         embd_word_len, embd_batch, embd_dim = embd.size()
         hidden_word_len, hidden_batch, hidden_dim = hidden.size()
-        assert embd_word_len == hidden_word_len 
+        assert embd_word_len == hidden_word_len
         assert embd_batch == hidden_batch
 
         projection_embd = self.relu(self.proj_linear(embd.view(-1, embd_dim)))
         z = self.sigmoid(self.embd_proj_linear(projection_embd) + self.hidden_linear(hidden.view(-1, hidden_dim)))
-        final_hidden = projection_embd * z +  hidden.view(-1, hidden_dim) * (1-z)
-        return final_hidden.view(hidden_word_len, hidden_batch, hidden_dim)          
-    
+        final_hidden = projection_embd * z + hidden.view(-1, hidden_dim) * (1 - z)
+        return final_hidden.view(hidden_word_len, hidden_batch, hidden_dim)
+
     def soft_sel2D_score(self, h_sent, h_passg):
         word_max_len, word_batch, sent_max_len, word_dim = h_passg.size()
         sent_max_len, sent_batch, sent_dim = h_sent.size()
         assert word_batch == sent_batch
         assert word_dim == sent_dim
-        
+
         wh_passg = self.match_linear(h_passg.view(-1, word_dim)).view(word_batch, word_dim, -1)
-        g = torch.bmm(h_sent.contiguous().transpose(0,1), wh_passg)
+        g = torch.bmm(h_sent.contiguous().transpose(0, 1), wh_passg)
         g_bar = self.softmax(g)
-        return torch.bmm(g_bar, h_passg.view(word_batch, -1, word_dim)).contiguous().transpose(0, 1) 
-    
+        return torch.bmm(g_bar, h_passg.view(word_batch, -1, word_dim)).contiguous().transpose(0, 1)
+
     def soft_sel1D_score(self, h_sent, h_passg):
         word_max_len, word_batch, word_dim = h_passg.size()
         sent_max_len, sent_batch, sent_dim = h_sent.size()
         assert word_batch == sent_batch
         assert word_dim == sent_dim
-        
+
         wh_passg = self.match_linear(h_passg.view(-1, word_dim)).view(word_batch, word_dim, -1)
-        g = torch.bmm(h_sent.contiguous().transpose(0,1), wh_passg)
+        g = torch.bmm(h_sent.contiguous().transpose(0, 1), wh_passg)
         g_bar = self.softmax(g)
-        return torch.bmm(g_bar, h_passg.transpose(0,1)).contiguous().transpose(0, 1)
-   
-    
+        return torch.bmm(g_bar, h_passg.transpose(0, 1)).contiguous().transpose(0, 1)
+
     def dist_score(self, h_sent, h_passg):
         passg_word_len, passg_batch, passg_sent_len, passg_hid_dim = h_passg.size()
         sent_word_len, sent_batch, sent_hid_dim = h_sent.size()
         assert passg_batch == sent_batch
         assert passg_hid_dim == sent_hid_dim
-        
+
         h_passg = h_passg.contiguous().transpose(0, 1).contiguous().transpose(1, 2)
         h_sent = h_sent.transpose(0, 1)
         h_sent_ = self.score_mult(h_sent.view(-1, sent_hid_dim))
         h_sent = h_sent_.view(sent_batch, sent_hid_dim, -1)
-        
-        soft_sel_score = torch.tensor([ [torch.sum(item) for item in torch.split(torch.bmm(sent.squeeze(1),  h_sent), 1, dim=0 ) ] for sent in torch.split(h_passg, 1, dim=1) ], requires_grad=True).to(self.device) 
-     
+
+        soft_sel_score = torch.tensor(
+            [[torch.sum(item) for item in torch.split(torch.bmm(sent.squeeze(1), h_sent), 1, dim=0)] for sent in
+             torch.split(h_passg, 1, dim=1)], requires_grad=True).to(self.device)
+
         soft_sel_score_ = self.softmax(soft_sel_score.T)
-        return soft_sel_score_   
+        return soft_sel_score_
 
     def score(self, h_ansques, h_passg):
         passg_batch, passg_len, passg_dim = h_passg.size()
@@ -374,26 +376,25 @@ class DistractorEncoder(nn.Module):
         h_ansques = h_ansques_.view(ansques_batch, 1, ansques_dim)
         h_passg_ = h_passg.transpose(1, 2)
         return torch.bmm(h_ansques, h_passg_)
-    
-    
+
     # Sorting, preparing Input for LSTM, Gated Machanism and Resorting
     def _feature_pw_fun2D(self, side_elems, word_length, sent_length):
         wrapped_inst = PermutationWrapper2D(self.gpu, word_length, sent_length, batch_first=True, \
-                                                rnn_type=self.rnn_type)
+                                            rnn_type=self.rnn_type)
         sorted_inst_list = [wrapped_inst.sort(side_elem)[0] for side_elem in side_elems]
-        _, sorted_inst_length, _ = wrapped_inst.sort(side_elems[0]) 
-        sorted_word = torch.cat([word.unsqueeze(-1) for word in sorted_inst_list], -1)  #cat words and feature  
-        sorted_word_emb = self.embeddings(sorted_word)                                  #get embeddings
+        _, sorted_inst_length, _ = wrapped_inst.sort(side_elems[0])
+        sorted_word = torch.cat([word.unsqueeze(-1) for word in sorted_inst_list], -1)  # cat words and feature
+        sorted_word_emb = self.embeddings(sorted_word)  # get embeddings
         sorted_word_bank, sorted_word_state, _ = self.word_encoder(sorted_word_emb, sorted_inst_length, 'src')
         word_bank, word_state = wrapped_inst.remap(sorted_word_bank, sorted_word_state)
-        return word_bank, word_state        
-    
+        return word_bank, word_state
+
     def _feature_pw_fun1D(self, side_elems, length, que_init):
         wrapped_inst = PermutationWrapper(self.gpu, length, rnn_type=self.rnn_type)
         sorted_inst_list = [wrapped_inst.sort(side_elem)[0] for side_elem in side_elems]
-        _, sorted_inst_length = wrapped_inst.sort(side_elems[0]) 
-        sorted_word = torch.cat([word.unsqueeze(-1) for word in sorted_inst_list], -1)     #cat words and feature
-        sorted_word_emb = self.embeddings(sorted_word)                                     #get embeddings                
+        _, sorted_inst_length = wrapped_inst.sort(side_elems[0])
+        sorted_word = torch.cat([word.unsqueeze(-1) for word in sorted_inst_list], -1)  # cat words and feature
+        sorted_word_emb = self.embeddings(sorted_word)  # get embeddings
 
         if que_init:
             sorted_word_bank, sorted_word_state, _ = self.init_encoder(sorted_word_emb, sorted_inst_length, 'ques')
@@ -402,21 +403,19 @@ class DistractorEncoder(nn.Module):
         else:
             sorted_word_bank, sorted_word_state, _ = self.word_encoder(sorted_word_emb, sorted_inst_length, 'ans')
             word_bank, word_state = wrapped_inst.remap(sorted_word_bank, sorted_word_state)
-            return word_bank, word_state                                                                     
-        
-        
-        
-    def forward(self, src, ques, ans, sent_length, word_length, ques_length, ans_length, tgt, tgt_length):        
+            return word_bank, word_state
+
+    def forward(self, src, ques, ans, sent_length, word_length, ques_length, ans_length, tgt, tgt_length):
         # word bank dim: words X batch X sentences X hidden_dim
-        #word_state: tuple of size 2(encoder LSTM): (direction*layers) X batch X hidden 
-        word_bank, word_state = self._feature_pw_fun2D(src, word_length, sent_length)      
-         
-        #Same for question init, question, sentence answer
+        # word_state: tuple of size 2(encoder LSTM): (direction*layers) X batch X hidden
+        word_bank, word_state = self._feature_pw_fun2D(src, word_length, sent_length)
+
+        # Same for question init, question, sentence answer
         # bank dim: words X batch X hidden_dim
         # state dim: tuple of size 2(encoder LSTM): (direction*layers) X batch X hidden
-        quesinit_bank, quesinit_state = self._feature_pw_fun1D(ques, ques_length, True)  
+        quesinit_bank, quesinit_state = self._feature_pw_fun1D(ques, ques_length, True)
         ans_bank, ans_state = self._feature_pw_fun1D(ans, ans_length, False)
-        ques_bank, ques_state = self._feature_pw_fun1D(ques, ques_length, False)        
+        ques_bank, ques_state = self._feature_pw_fun1D(ques, ques_length, False)
 
         ## sentence level
         _, bs, sentlen, hid = word_state[0].size()
@@ -424,28 +423,29 @@ class DistractorEncoder(nn.Module):
         sent_emb = word_state[0].transpose(0, 2)[:, :, -2:, :].contiguous().view(sentlen, bs, -1)
         wrapped_sent = PermutationWrapper(self.gpu, sent_length, rnn_type=self.rnn_type)
         sorted_sent_emb, sorted_sent_length = wrapped_sent.sort(sent_emb)
-        sorted_sent_bank, sorted_sent_state, _ = self.sent_encoder(sorted_sent_emb, sorted_sent_length, 'sent')        
+        sorted_sent_bank, sorted_sent_state, _ = self.sent_encoder(sorted_sent_emb, sorted_sent_length, 'sent')
         sent_bank, sent_state = wrapped_sent.remap(sorted_sent_bank, sorted_sent_state)
-        
-        #tgt
+
+        # tgt
         tgt_word_emb = self.tgt_embeddings(tgt.unsqueeze(-1))
         tgt_word_bank, tgt_state, _ = self.tgt_encoder(tgt_word_emb, tgt_length, "tgt")
 
         word_bank_flat = word_bank.view(-1, bs, 768)
-        ques_bank_flat = ques_bank.view(-1,bs,768)
+        ques_bank_flat = ques_bank.view(-1, bs, 768)
         ans_bank_flat = ans_bank.view(-1, bs, 768)
 
-        print(f"word_bank.shape {word_bank.shape}")
+        # print(f"word_bank.shape {word_bank.shape}")
         H_ques = self.multi_head_attention(ques_bank_flat, word_bank_flat, word_bank_flat)
-        H_ans = self.multi_head_attention(ans_bank_flat,word_bank_flat,word_bank_flat)
-        H_ques_ans = self.multi_head_attention(ques_bank_flat,ans_bank_flat, ans_bank_flat)
-        H_ans_ques = self.multi_head_attention(ans_bank_flat,ques_bank_flat, ques_bank_flat)
+        H_ans = self.multi_head_attention(ans_bank_flat, word_bank_flat, word_bank_flat)
+        H_ques_ans = self.multi_head_attention(ques_bank_flat, ans_bank_flat, ans_bank_flat)
+        H_ans_ques = self.multi_head_attention(ans_bank_flat, ques_bank_flat, ques_bank_flat)
         H_ques_bar = self.multi_head_attention(H_ques_ans, word_bank_flat, word_bank_flat)
         H_ans_bar = self.multi_head_attention(H_ans_ques, word_bank_flat, word_bank_flat)
 
-
-
-        #softsel
+        ques_bank_reform = self.reform_question(ques_bank_flat.transpose(0,1), ans_bank_flat.transpose(0,1)).transpose(0,1)
+        word_bank_reform = self.reform_passage(word_bank_flat.transpose(0,1),ques_bank_flat.transpose(0,1),ans_bank_flat.transpose(0,1), ques_bank_reform.transpose(0,1)).view(word_bank.shape)
+        sent_bank_reform = self. reform_passage(sent_bank.transpose(0,1),ques_bank_flat.transpose(0,1),ans_bank_flat.transpose(0,1), ques_bank_reform.transpose(0,1)).view(sent_bank.shape)
+        # softsel
         # H_ques = self.soft_sel2D_score(ques_bank, word_bank)
         # H_ans = self.soft_sel2D_score(ans_bank, word_bank)
 
@@ -453,30 +453,128 @@ class DistractorEncoder(nn.Module):
         # H_ans_ques = self.soft_sel1D_score(ans_bank, ques_bank)   #add
         # H_ques_bar = self.soft_sel2D_score(H_ques_ans, word_bank) #add
         # H_ans_bar = self.soft_sel2D_score(H_ans_ques, word_bank)  #add
-     
-        #Average pooling of word_bank, question_bank and ans_bank 
-        match_word = torch.div(word_bank.sum(0), (word_length.unsqueeze(-1).float() + 1e-20))   #passage Sentence
-        match_ques = torch.div(ques_bank.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))   #ques 
-        match_ans = torch.div(ans_bank.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)        #ans
-        
-        #Average pooling of softsel question and softsel answer 
-        H_match_ques = torch.div(H_ques.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))   #H_ques
-        H_match_ans = torch.div(H_ans.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)           #H_ans
 
-        H_match_ques_bar = torch.div(H_ques_bar.sum(0), ques_length.unsqueeze(-1).float() + 1e-20)           #H_ques_bar #add
-        H_match_ans_bar = torch.div(H_ans_bar.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)           #H_ans_bar #add
-         
-        #gated_question and gated answer
+        # Average pooling of word_bank, question_bank and ans_bank
+
+
+
+        match_word = torch.div(word_bank.sum(0), (word_length.unsqueeze(-1).float() + 1e-20))  # passage Sentence
+        match_ques = torch.div(ques_bank.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))  # ques
+        match_ans = torch.div(ans_bank.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)  # ans
+
+        # Average pooling of softsel question and softsel answer
+        H_match_ques = torch.div(H_ques.sum(0), (ques_length.unsqueeze(-1).float() + 1e-20))  # H_ques
+        H_match_ans = torch.div(H_ans.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)  # H_ans
+
+        H_match_ques_bar = torch.div(H_ques_bar.sum(0), ques_length.unsqueeze(-1).float() + 1e-20)  # H_ques_bar #add
+        H_match_ans_bar = torch.div(H_ans_bar.sum(0), ans_length.unsqueeze(-1).float() + 1e-20)  # H_ans_bar #add
+
+        # gated_question and gated answer
         gated_ques = self.gated_mechanism_of_averagepool(match_ques, H_match_ques)
         gated_ans = self.gated_mechanism_of_averagepool(match_ans, H_match_ans)
 
-        gated_ques_bar = self.gated_mechanism_of_averagepool(match_ans, H_match_ques_bar)   #add
-        gated_ans_bar = self.gated_mechanism_of_averagepool(match_ans, H_match_ans_bar)     #add
-        
-        match_score = (self.l_ques * self.score(gated_ques, match_word) - (self.l_ans/3) * (self.score(gated_ans, match_word) + self.score(gated_ques_bar, match_word) +self.score(gated_ans_bar, match_word) )   ).squeeze(1)      #add
+        gated_ques_bar = self.gated_mechanism_of_averagepool(match_ans, H_match_ques_bar)  # add
+        gated_ans_bar = self.gated_mechanism_of_averagepool(match_ans, H_match_ans_bar)  # add
+
+        match_score = (self.l_ques * self.score(gated_ques, match_word) - (self.l_ans / 3) * (
+                    self.score(gated_ans, match_word) + self.score(gated_ques_bar, match_word) + self.score(
+                gated_ans_bar, match_word))).squeeze(1)  # add
         # calculating temprature 
         temperature = self.sigmoid(self.norm_linear(match_ques)) + 1e-20
-        #final static attention: batch X sentences 
+        # final static attention: batch X sentences
         static_attn = torch.div(match_score, temperature) + 1e-20
-        #static_attn = self.softmax(static_attn)   
-        return word_bank, sent_bank, quesinit_state, static_attn, tgt_state
+        static_attn = self.softmax(static_attn)
+        return word_bank_reform, sent_bank_reform, quesinit_state, static_attn, tgt_state
+
+
+
+
+
+class ReformingQuestionModule(nn.Module):
+    def __init__(self, dim):
+        super(ReformingQuestionModule, self).__init__()
+        self.self_attend = nn.Linear(dim, 1)
+        self.gate = nn.Bilinear(dim, dim, 1)
+        self.softmax = nn.Softmax(dim = 1)
+
+    def forward(self, question, answer):
+        # Self-Attend Layer for answer
+        batch_size = question[0]
+        answer_weights = self.softmax(self.self_attend(answer))
+        v_a = torch.bmm(answer_weights.transpose(1,2), answer)
+        #v_a batch x 1 x dims
+        # ques batch
+        # Gate Layer
+        gate_values = self.softmax(self.gate(question, v_a.repeat(1,question.size(1),1)))
+        reformed_question = gate_values * question
+
+        return reformed_question
+
+
+class ReformingPassageModule(nn.Module):
+    def __init__(self, dim):
+        super(ReformingPassageModule, self).__init__()
+        self.fusion = FuseLayer(dim)
+        self.self_attend = nn.Linear(dim, 1)
+        self.gate = nn.Bilinear(dim, dim, 1)
+        self.reform = ReformingQuestionModule(dim)
+        self.p_q_attention = nn.Linear(dim, dim)
+        self.re_encoding = nn.LSTM(dim, dim // 2, bidirectional=True)
+        # self.re_encoding = RNNEncoder()
+
+    def scale_dot_attention(self, query, key, value, mask=None, dropout=None):
+        dims = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2,-1))/math.sqrt(dims)
+
+        attn_weights = F.softmax(scores , dim = -1)
+        context = torch.matmul(attn_weights, value)
+        return context
+
+
+    def forward(self, passage, question, answer, ques_reform):
+        # A-Q Attention Layer
+        a_bar = self.scale_dot_attention(answer, question, question)
+        a_hat = self.fusion(answer, a_bar)
+        P_dot = self.reform(passage, a_hat)
+        P_bar = self.scale_dot_attention(P_dot, ques_reform, ques_reform)
+        fused_p = self.fusion(P_dot, P_bar)
+
+
+        # fused_a = self.fusion(torch.cat([answer, attended_q, answer - attended_q, answer * attended_q], dim=-1))
+        #
+        # # Self-Attend & Gate Layer
+        # a_weights = F.softmax(self.self_attend(fused_a), dim=0)
+        # a_vec = torch.sum(a_weights * fused_a, dim=0)
+        # gate_values = torch.sigmoid(self.gate(passage.view(-1, passage.size(-1)), a_vec.unsqueeze(0).expand(
+        #     passage.size(0) * passage.size(1) * passage.size(2), -1)))
+        # reformed_passage = gate_values.view(passage.size()) * passage
+        #
+        # # P-Q Attention Layer
+        # p_q_attention = F.softmax(
+        #     torch.bmm(self.p_q_attention(reformed_passage.view(-1, reformed_passage.size(-1))),
+        #               question.transpose(1, 2)), dim=2)
+        # attended_p = torch.bmm(p_q_attention, question).view(reformed_passage.size())
+        # fused_p = self.fusion(torch.cat(
+        #     [reformed_passage, attended_p, reformed_passage - attended_p, reformed_passage * attended_p],
+        #     dim=-1))
+
+        # Re-encoding Layer
+        re_encoded_passage, _ = self.re_encoding(fused_p)
+        re_encoded_passage = re_encoded_passage.view(fused_p.size())
+
+        return re_encoded_passage
+
+
+class FuseLayer(nn.Module):
+    def __init__(self, dims):
+        super().__init__()
+        self.fuse_layer = nn.Linear(4 * dims, dims)
+
+    def forward(self, m1,m2):
+        input_1 =  m1
+        input_2 = m2
+        input_3 = m1 - m2
+        input_4 = m1 * m2
+        concat = torch.cat((input_1,input_2,input_3,input_4), dim = -1)
+        fused = torch.tanh(self.fuse_layer(concat))
+        return fused

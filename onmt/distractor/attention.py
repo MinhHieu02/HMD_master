@@ -173,22 +173,22 @@ class MultiHeadAttention(nn.Module):
         key = key.view(key.size(1), key.size(0), self.n_heads,self.single_head_dim)  # batch_size x seq_len x n_heads x single_head_dim
         query = query.view(query.size(1), query.size(0), self.n_heads, self.single_head_dim)
         value = value.view(value.size(1), value.size(0), self.n_heads, self.single_head_dim)
-        print(f"key shape: {key.shape}")
-        print(f"query shape: {query.shape}")
+        # print(f"key shape: {key.shape}")
+        # print(f"query shape: {query.shape}")
         k = self.key_matrix(key)
         q = self.query_matrix(query)
         v = self.value_matrix(value)
-        print(f"v shape: {v.shape}")
+        # print(f"v shape: {v.shape}")
         q = q.transpose(1, 2)  # batch_size x n_heads x seq_len x single_head_dim
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
-        print(f"v shape: {v.shape}")
-        print(f"q shape: {q.shape}")
+        # print(f"v shape: {v.shape}")
+        # print(f"q shape: {q.shape}")
 
         # compute attentions , # adjusted key for matrix multiplication
 
         k_adjust = k.transpose(-1, -2)  # batch_size x n_heads x single_head_dim x seqence_length
-        print(f"k_adjust shape: {k_adjust.shape}")
+        # print(f"k_adjust shape: {k_adjust.shape}")
         product = torch.matmul(q,k_adjust)  # batch_size x n_heads x seq_len x single_head_dim * #batch_size x n_heads x single_head_dim x seqence_length
         # batch_size x n_heads x seqence_length x seqence_length
 
@@ -203,10 +203,10 @@ class MultiHeadAttention(nn.Module):
         # applying softmax
 
         scores = F.softmax(product, dim=-1)
-        print(f"score shape: {scores.shape}")
-        print(f"v shape: {v.shape}")
+        # print(f"score shape: {scores.shape}")
+        # print(f"v shape: {v.shape}")
         scores = torch.matmul(scores, v)  # batch x n_head x seq_leg x sing_head_dim
-        print(f"scores shape: {scores.shape}")
+        # print(f"scores shape: {scores.shape}")
         # concatenated output
         concat = scores.transpose(1, 2).contiguous().view(query.size(1), query.size(0),
                                                           self.single_head_dim * self.n_heads)  # batch x seq_leng x embed_dims
@@ -214,3 +214,38 @@ class MultiHeadAttention(nn.Module):
         output = self.out(concat)  # batch x seq_length x embed_dim
 
         return output
+
+
+# class Attention(nn.Module):
+#     """
+#     compute scale dot product attention
+#
+#     Query : given sentence that we focused on (decoder)
+#     Key : every sentence to check relationship with Qeury(encoder)
+#     Value : every sentence same with Key (encoder)
+#     """
+#
+#     def __init__(self):
+#         super(, self).__init__()
+#         self.softmax = nn.Softmax(dim=-1)
+#
+#     def forward(self, q, k, v, mask=None, e=1e-12):
+#         # input is 4 dimension tensor
+#         # [batch_size, head, length, d_tensor]
+#         batch_size, head, length, d_tensor = k.size()
+#
+#         # 1. dot product Query with Key^T to compute similarity
+#         k_t = k.transpose(2, 3)  # transpose
+#         score = (q @ k_t) / math.sqrt(d_tensor)  # scaled dot product
+#
+#         # 2. apply masking (opt)
+#         if mask is not None:
+#             score = score.masked_fill(mask == 0, -10000)
+#
+#         # 3. pass them softmax to make [0, 1] range
+#         score = self.softmax(score)
+#
+#         # 4. multiply with Value
+#         v = score @ v
+#
+#         return v, score

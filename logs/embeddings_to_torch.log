@@ -3098,3 +3098,35 @@ Saving embedding as:
 	* dec: ../data/processed.bert.dec.pt
 [2024-06-14 16:06:21,478 INFO] 
 Done.
+[2024-06-28 20:54:39,576 INFO] From: ../data/processed.vocab.pt
+[2024-06-28 20:54:39,576 INFO] 	* source vocab: 17719 words
+[2024-06-28 20:54:39,576 INFO] 	* target vocab: 17719 words
+[2024-06-28 20:54:39,576 INFO] Loading BERT tokenizer and model...
+[2024-06-28 20:54:57,732 INFO] Generating embeddings for each word in the vocabulary...
+[2024-06-28 20:56:34,367 INFO] Completed generating embeddings.
+[2024-06-28 20:56:34,404 INFO] Loading BERT tokenizer and model...
+[2024-06-28 20:56:47,943 INFO] Generating embeddings for each word in the vocabulary...
+[2024-06-28 20:58:51,450 INFO] Completed generating embeddings.
+[2024-06-28 20:58:51,581 INFO] 
+Matching: 
+[2024-06-28 20:58:51,582 INFO] 	* enc: 17719 match, 0 missing, (100.00%)
+[2024-06-28 20:58:51,582 INFO] 	* dec: 17719 match, 0 missing, (100.00%)
+[2024-06-28 20:58:51,582 INFO] 
+Filtered embeddings:
+[2024-06-28 20:58:51,582 INFO] 	* enc: torch.Size([17719, 768])
+[2024-06-28 20:58:51,582 INFO] 	* dec: torch.Size([17719, 768])
+[2024-06-28 20:58:51,582 INFO] 
+Saving embedding as:
+	* enc: ../data/processed.bert.enc.pt
+	* dec: ../data/processed.bert.dec.pt
+[2024-06-28 20:58:51,743 INFO] 
+Done.
+[2024-06-28 21:15:27,525 INFO] From: ../data/processed.vocab.pt
+[2024-06-28 21:15:27,525 INFO] 	* source vocab: 17719 words
+[2024-06-28 21:15:27,526 INFO] 	* target vocab: 17719 words
+[2024-06-28 21:15:27,526 INFO] Loading BERT tokenizer and model...
+[2024-06-28 21:15:46,959 INFO] From: ../data/processed.vocab.pt
+[2024-06-28 21:15:46,959 INFO] 	* source vocab: 17719 words
+[2024-06-28 21:15:46,960 INFO] 	* target vocab: 17719 words
+[2024-06-28 21:15:46,960 INFO] Loading BERT tokenizer and model...
+[2024-06-28 21:15:51,821 INFO] Generating embeddings for each word in the vocabulary...
