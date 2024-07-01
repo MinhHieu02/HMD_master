@@ -214,3 +214,16 @@ class MultiHeadAttention(nn.Module):
         output = self.out(concat)  # batch x seq_length x embed_dim
 
         return output
+
+class NegativeAttentionModel(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super().__init__()
+        self.multihead_attn_pq = nn.MultiheadAttention(d_model, num_heads)
+        self.multihead_attn_pa = nn.MultiheadAttention(d_model, num_heads)
+
+    def forward(self,P,Q,A):
+        attn_output_pq , _ = self.multihead_attn_pq(P,Q,Q)
+        attn_output_pa , _ = self.multihead_attn_pa(P,A,A)
+        attn_output = attn_output_pq - attn_output_pa
+
+        return attn_output

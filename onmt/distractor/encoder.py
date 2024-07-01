@@ -9,7 +9,7 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 from onmt.utils.rnn_factory import rnn_factory
 from onmt.utils.misc import sequence_mask
-from onmt.distractor.attention import MultiHeadAttention
+from onmt.distractor.attention import MultiHeadAttention, NegativeAttentionModel
 
 
 class PermutationWrapper:
@@ -310,8 +310,10 @@ class DistractorEncoder(nn.Module):
         self.hidden_linear = nn.Linear(hidden_size, hidden_size)
         self.ss_ap_liner = nn.Linear(hidden_size, hidden_size)
         self.relu = nn.ReLU()
-        self.multi_head_attention = MultiHeadAttention(embed_dim=768, n_heads=12)
-        
+        # self.multi_head_attention = MultiHeadAttention(embed_dim=768, n_heads=12)
+        self.multi_head_attention = nn.MultiheadAttention(768,12, batch_first = False)
+        self.negative_mul_head = NegativeAttentionModel(768,12)
+
     def gated_mechanism_of_averagepool(self, bank_sent, softsel_sent):
         ss_ap_z = self.sigmoid(self.ss_ap_liner(bank_sent) + self.ss_ap_liner(softsel_sent))
         return bank_sent * ss_ap_z +  softsel_sent * (1-ss_ap_z)
@@ -435,14 +437,17 @@ class DistractorEncoder(nn.Module):
         ques_bank_flat = ques_bank.view(-1,bs,768)
         ans_bank_flat = ans_bank.view(-1, bs, 768)
 
-        print(f"word_bank.shape {word_bank.shape}")
-        H_ques = self.multi_head_attention(ques_bank_flat, word_bank_flat, word_bank_flat)
-        H_ans = self.multi_head_attention(ans_bank_flat,word_bank_flat,word_bank_flat)
-        H_ques_ans = self.multi_head_attention(ques_bank_flat,ans_bank_flat, ans_bank_flat)
-        H_ans_ques = self.multi_head_attention(ans_bank_flat,ques_bank_flat, ques_bank_flat)
-        H_ques_bar = self.multi_head_attention(H_ques_ans, word_bank_flat, word_bank_flat)
-        H_ans_bar = self.multi_head_attention(H_ans_ques, word_bank_flat, word_bank_flat)
+        # print(f"word_bank.shape {word_bank.shape}")
+        H_ques,_ = self.multi_head_attention(ques_bank_flat, word_bank_flat, word_bank_flat)
+        H_ans,_ = self.multi_head_attention(ans_bank_flat,word_bank_flat,word_bank_flat)
+        H_ques_ans,_ = self.multi_head_attention(ques_bank_flat,ans_bank_flat, ans_bank_flat)
+        H_ans_ques,_ = self.multi_head_attention(ans_bank_flat,ques_bank_flat, ques_bank_flat)
+        H_ques_bar,_ = self.multi_head_attention(H_ques_ans, word_bank_flat, word_bank_flat)
+        H_ans_bar,_ = self.multi_head_attention(H_ans_ques, word_bank_flat, word_bank_flat)
 
+        word_bank_ques,_ = self.multi_head_attention(word_bank_flat,ques_bank_flat,ques_bank_flat)
+        word_bank = word_bank_ques.view(word_bank.shape)
+        sent_bank = self.negative_mul_head(sent_bank, ques_bank_flat,ans_bank_flat)
 
 
         #softsel
@@ -478,5 +483,5 @@ class DistractorEncoder(nn.Module):
         temperature = self.sigmoid(self.norm_linear(match_ques)) + 1e-20
         #final static attention: batch X sentences 
         static_attn = torch.div(match_score, temperature) + 1e-20
-        #static_attn = self.softmax(static_attn)   
+        static_attn = self.softmax(static_attn)
         return word_bank, sent_bank, quesinit_state, static_attn, tgt_state
